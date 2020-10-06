@@ -1,0 +1,42 @@
+{
+    "name": "testWorkspaceWithRG",
+    "description": "terraform workspace",
+     "type": [
+      "terraform_v0.12"
+    ],
+    "tags": [
+      "department:HR",
+      "application:compensation",
+      "environment:staging"
+    ],
+    "template_ref": "ibm-open-liberty-2ae855ce3ca4",
+    "template_repo": {
+      "url": "https://github.ibm.com/gshamann/safe-local-exec-tf12"
+    },
+    "template_data": [
+      {
+        "folder": ".",
+      "type":"terraform_v0.12",
+    "env_values":[
+              {
+                  "MAX_TIMEOUT":"10"
+              },
+              {
+                  "GIT_ASKPASS":"./git-askpass-helper.sh"
+              }
+          ],
+        "variablestore": [
+          {
+            "name": "sample_var",
+            "secure": false,
+            "value": "THIS IS IBM CLOUD TERRAFORM CLI DEMO",
+            "description": "Description of sample_var"
+          },
+          {
+            "name": "sleepy_time",
+            "value": "5"
+          }
+        ]
+      }
+    ]
+  }

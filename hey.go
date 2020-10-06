@@ -39,14 +39,18 @@ const (
 )
 
 var (
-	m           = flag.String("m", "GET", "")
-	headers     = flag.String("h", "", "")
-	body        = flag.String("d", "", "")
-	bodyFile    = flag.String("D", "", "")
-	accept      = flag.String("A", "", "")
-	contentType = flag.String("T", "text/html", "")
-	authHeader  = flag.String("a", "", "")
-	hostHeader  = flag.String("host", "", "")
+	m                     = flag.String("m", "GET", "")
+	headers               = flag.String("h", "", "")
+	body                  = flag.String("d", "", "")
+	bodyFile              = flag.String("D", "", "")
+	accept                = flag.String("A", "", "")
+	contentType           = flag.String("T", "text/html", "")
+	authHeader            = flag.String("a", "", "")
+	hostHeader            = flag.String("host", "", "")
+	callback              = flag.String("callback", "inactive", "")
+	callBackTimout        = flag.Int("timeout", 50, "Defined a time interval a callback should be allowed")
+	callBackBackOff       = flag.Int("backoff", 0, "Defines the time interval between pooling in a callback")
+	callBackBreakInterval = flag.Int("break", 0, "Defined the break taken between the callbacks")
 
 	output = flag.String("o", "", "")
 
@@ -98,7 +102,9 @@ Options:
                         connections between different HTTP requests.
   -disable-redirects    Disable following of HTTP redirects
   -cpus                 Number of used cpu cores.
-                        (default for current machine is %d cores)
+						(default for current machine is %d cores)
+						
+	-
 `
 
 func main() {
@@ -108,6 +114,15 @@ func main() {
 
 	var hs headerSlice
 	flag.Var(&hs, "H", "")
+
+	// handle callback functions
+	var allCallBacks []func(*http.Response, *requester.Work) requester.Stats
+	callBacks := strings.Split(*callback, ",")
+	for _, eachCallBack := range callBacks {
+		if eachCallBack == "inactive" {
+			allCallBacks = append(allCallBacks, requester.CheckInactive)
+		}
+	}
 
 	flag.Parse()
 	if flag.NArg() < 1 {
@@ -225,6 +240,12 @@ func main() {
 		H2:                 *h2,
 		ProxyAddr:          proxyURL,
 		Output:             *output,
+		CallBack:           allCallBacks,
+		CallBackConfig: requester.CallBackConfig{
+			Timeout:       *callBackTimout,
+			BackOffTime:   *callBackBackOff,
+			BreakInterval: *callBackBreakInterval,
+		},
 	}
 	w.Init()
 

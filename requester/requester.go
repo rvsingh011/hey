@@ -18,6 +18,7 @@ package requester
 import (
 	"bytes"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -45,6 +46,14 @@ type result struct {
 	resDuration   time.Duration // response "read" duration
 	delayDuration time.Duration // delay between response and request
 	contentLength int64
+	callBackStats []Stats
+}
+
+// CallBackConfig hold call back relative config -- all time in minutes
+type CallBackConfig struct {
+	Timeout       int
+	BackOffTime   int
+	BreakInterval int
 }
 
 type Work struct {
@@ -96,6 +105,9 @@ type Work struct {
 	results  chan *result
 	stopCh   chan struct{}
 	start    time.Duration
+
+	CallBack       []func(*http.Response, *Work) Stats // CallBack handler
+	CallBackConfig CallBackConfig                      // callback config
 
 	report *report
 }
@@ -186,12 +198,21 @@ func (b *Work) makeRequest(c *http.Client) {
 	if err == nil {
 		size = resp.ContentLength
 		code = resp.StatusCode
-		io.Copy(ioutil.Discard, resp.Body)
+		// Only in case a call back is provided
+		if len(b.CallBack) > 0 {
+			status := b.executeCallBack(resp)
+			// Overide the error and status only when the callback fails with an error
+			if status.Error != nil {
+				code = status.StatusCode
+			}
+		}
 		resp.Body.Close()
 	}
+
 	t := now()
 	resDuration = t - resStart
 	finish := t - s
+
 	b.results <- &result{
 		offset:        s,
 		statusCode:    code,
@@ -284,4 +305,43 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// DoWithTimeout Runs a fucntion with timeout
+func (b *Work) DoWithTimeout(timeout time.Duration, callback func(*http.Response, *Work) Stats, resp *http.Response) Stats {
+
+	select {
+	case <-time.After(timeout):
+		break
+
+	default:
+		err := callback(resp, b)
+		return err
+	}
+	return Stats{
+		Error:      fmt.Errorf("The callback cannot complete in allotted time"),
+		StatusCode: 408,
+	}
+}
+
+// executeCallBack will execute the callback.
+func (b *Work) executeCallBack(body *http.Response) Stats {
+	var callbackStatus Stats
+	for _, eachCallBack := range b.CallBack {
+		// call function with timeout
+		callbackStatus = b.DoWithTimeout(time.Duration(b.CallBackConfig.Timeout)*time.Second, eachCallBack, body)
+		// backoff for the following minuutes
+		time.Sleep(time.Second * time.Duration(b.CallBackConfig.BreakInterval))
+	}
+	return callbackStatus
+}
+
+// GetHeaders get parent request header for polling purpose.
+func (b *Work) GetHeaders() map[string][]string {
+	return b.Request.Header
+}
+
+// ReturnBaseURL ...
+func (b *Work) ReturnBaseURL() string {
+	return fmt.Sprintf("%s://%s:%s", b.Request.URL.Scheme, b.Request.URL.Hostname(), b.Request.URL.Port())
 }
